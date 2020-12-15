@@ -5,6 +5,12 @@ provider "aws" {
 }
 
 
+# Create SNS Topic
+resource "aws_sns_topic" "block_updates" {
+  name = "block-topic"
+}
+
+
 # Create artifact of Lambda function
 data "archive_file" "init" {
   type        = "zip"
@@ -21,6 +27,12 @@ resource "aws_lambda_function" "blockchain" {
     filename         = "./function/app.zip"
     function_name    = var.function_name
     source_code_hash = filebase64sha256("./function/app.zip")
+   
+    environment {
+        variables = {
+            sns_topic = aws_sns_topic.block_updates.arn
+        }
+    }
 }
 
 # Basic access policy of Lambda
@@ -41,4 +53,27 @@ resource "aws_iam_role" "lambda_role" {
   description = "Allows Lambda Function to call AWS services on your behalf."
 
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
+}
+
+# Allow Lambda send message to SNS topic
+data "aws_iam_policy_document" "lambda_sns_policy" {
+    statement {
+        actions = ["sns:Publish"]
+        resources = [
+            aws_sns_topic.block_updates.arn,
+        ]
+    }
+}
+
+resource "aws_iam_role_policy" "lambda_policy" {
+  name   = "lambda_policy"
+  role   = aws_iam_role.lambda_role.id
+  policy = data.aws_iam_policy_document.lambda_sns_policy.json
+}
+
+
+# Output app address
+output "sns_arn" {
+    value       = aws_sns_topic.block_updates.arn
+    description = "SNS topic ARN"
 }
